@@ -284,12 +284,10 @@
         let bluetoothDevice = null;
         let bleCharacteristic = null;
         
-        // UUIDs COMUNES para impresoras térmicas (pueden variar)
-        // UUID del Servicio: Printer (18F0) - Sigue siendo el mismo.
+        // UUIDs COMUNES para impresoras térmicas
+        // UUID del Servicio: Printer Service (18F0)
         const PRINTER_SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb'; 
-        
-        // UUID de la Característica de Escritura (Cambiando de 2AF1 a FFF1, un común alternativo)
-        const WRITE_CHARACTERISTIC_UUID = '0000fff1-0000-1000-8000-00805f9b34fb'; 
+        // Nota: Ya no usamos un WRITE_CHARACTERISTIC_UUID fijo, lo buscaremos dinámicamente.
 
         let vehiculosEstacionados = [];
         let historialSalidas = [];
@@ -425,10 +423,11 @@
             bluetoothStatus.className = 'font-bold text-indigo-800';
             
             try {
-                // 1. Solicitar el dispositivo (usando el nombre exacto de tu ticket)
+                // 1. Solicitar el dispositivo (usando el nombre 'BlueTooth Printer')
                 bluetoothDevice = await navigator.bluetooth.requestDevice({
                     filters: [{ name: 'BlueTooth Printer' }], 
-                    optionalServices: [PRINTER_SERVICE_UUID] 
+                    // CRÍTICO: Se añade el UUID de servicio como obligatorio (en services)
+                    services: [PRINTER_SERVICE_UUID] 
                 });
 
                 if (!bluetoothDevice) {
@@ -438,14 +437,30 @@
                 }
 
                 // 2. Conectar al GATT Server
+                console.log(`Conectando a GATT server de: ${bluetoothDevice.name}`);
                 const server = await bluetoothDevice.gatt.connect();
                 
                 // 3. Obtener el servicio de la impresora 
+                console.log(`Obteniendo servicio: ${PRINTER_SERVICE_UUID}`);
                 const service = await server.getPrimaryService(PRINTER_SERVICE_UUID);
                 
-                // 4. Obtener la característica de escritura
-                // NOTA: Se está usando el UUID FFF1, si falla, intenta con 2AF1 de nuevo.
-                bleCharacteristic = await service.getCharacteristic(WRITE_CHARACTERISTIC_UUID);
+                // 4. Obtener TODAS las características y buscar la de escritura
+                console.log('Buscando característica de escritura...');
+                const characteristics = await service.getCharacteristics();
+                bleCharacteristic = null;
+
+                for (const char of characteristics) {
+                    // La propiedad 'write' o 'writeWithoutResponse' indica una característica de escritura
+                    if (char.properties.write || char.properties.writeWithoutResponse) {
+                        bleCharacteristic = char;
+                        console.log(`¡Característica de escritura encontrada! UUID: ${char.uuid}`);
+                        break; 
+                    }
+                }
+
+                if (!bleCharacteristic) {
+                    throw new Error("No se encontró ninguna característica con permisos de escritura en el servicio de la impresora (18F0).");
+                }
 
                 bluetoothStatus.textContent = '✅ Conectado a BlueTooth Printer!';
                 bluetoothStatus.className = 'font-bold text-green-600';
@@ -455,7 +470,10 @@
 
             } catch (error) {
                 console.error("Fallo al conectar la impresora Bluetooth:", error);
-                showModal("Error de Conexión BLE", `No se pudo conectar: ${error.message}. Asegúrate de que la impresora esté encendida y cerca.`);
+                
+                let errorMessage = error.message;
+
+                showModal("Error de Conexión BLE", `No se pudo conectar: ${errorMessage}. Asegúrate de que la impresora esté encendida y cerca.`);
                 bluetoothStatus.textContent = '⚠️ Desconectado/Error';
                 bluetoothStatus.className = 'font-bold text-red-600';
                 connectBluetoothBtn.classList.remove('hidden'); 
@@ -470,17 +488,16 @@
             connectBluetoothBtn.classList.remove('hidden'); 
             bluetoothDevice = null;
             bleCharacteristic = null;
+            console.log("Impresora Bluetooth desconectada.");
         }
 
         connectBluetoothBtn.addEventListener('click', connectBluetoothPrinter);
 
         /**
          * Convierte el texto del ticket a comandos ESC/POS básicos y lo envía.
-         * Esto asume que la impresora es compatible con ESC/POS.
          */
         async function printViaBluetooth(ticketText) {
             if (!bleCharacteristic) {
-                // Si falló la obtención de la característica (lo que está pasando), volvemos a la impresión estándar.
                 showModal("Error de Impresión", "La impresora Bluetooth no está conectada o no se pudo acceder a la característica de escritura. Se usará la impresión del navegador.");
                 window.print(); // Fallback a impresión de navegador
                 return false;
@@ -493,13 +510,14 @@
                 const ESC = '\x1B';
                 const GS = '\x1D';
 
-                // 1. Inicializar, centrar, establecer tamaño (opcional)
+                // 1. Inicializar (ESC @) y centrar (ESC a 1)
                 const initialize = ESC + '@';
                 const center = ESC + 'a' + '\x01';
-                // 2. Contenido y salto de línea (añadir saltos de línea al final)
-                const feedLines = '\n\n\n'; 
                 
-                // 3. Comando de corte de papel (GS V m n o GS V m)
+                // 2. Contenido y 4 saltos de línea al final
+                const feedLines = '\n\n\n\n'; 
+                
+                // 3. Comando de corte de papel (GS V 0) - Corte completo
                 const cut = GS + 'V' + '\x00'; 
                 
                 // 4. Concatenar comandos y contenido
@@ -508,20 +526,21 @@
                 // Convertir a bytes
                 const data = textEncoder.encode(printData);
                 
-                // Escribir en la característica (se divide en fragmentos de 200 bytes para mayor estabilidad)
-                const chunkSize = 200; // REDUCCIÓN DEL CHUNK
+                // Escribir en la característica (dividido en fragmentos de 200 bytes)
+                const chunkSize = 200; 
+                console.log(`Enviando ${data.length} bytes a la impresora...`);
+
                 for (let i = 0; i < data.length; i += chunkSize) {
                     const chunk = data.slice(i, i + chunkSize);
                     await bleCharacteristic.writeValue(chunk);
-                    // Pequeña pausa opcional (puede no ser necesaria, pero ayuda con saturación)
-                    // await new Promise(resolve => setTimeout(resolve, 50)); 
+                    await new Promise(resolve => setTimeout(resolve, 30)); // Pequeño retraso
                 }
 
                 showModal("Impresión Bluetooth Exitosa", "Ticket enviado directamente a la impresora Bluetooth (ESC/POS).");
                 return true;
             } catch (error) {
                 console.error("Error al enviar datos por Bluetooth (ESC/POS):", error);
-                // Si falla al enviar (como en tu imagen), le decimos al usuario que imprima con el navegador.
+                // Si falla al enviar (GATT operation failed), se cae al diálogo estándar
                 showModal("Error Crítico de Impresión BLE", `Fallo al enviar el ticket binario: ${error.message}. Intentando usar la impresión estándar del navegador.`);
                 window.print(); 
                 return false;
