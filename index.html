@@ -11,15 +11,15 @@
     <style>
         /* Definición de la nueva paleta de colores para el degradado */
         :root {
-            --color-primary-start: #3B82F6; /* Azul Vívido */
-            --color-primary-mid: #8B5CF6;    /* Morado Brillante */
-            --color-primary-end: #EC4899;  /* Rojo/Rosa Magenta */
+            --color-primary-start: #3B82F6; 
+            --color-primary-mid: #8B5CF6;    
+            --color-primary-end: #EC4899;  
             --color-text-dark: #1F2937;
         }
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #F8FAFC; /* Fondo muy claro */
+            background-color: #F8FAFC; 
             color: var(--color-text-dark);
         }
         
@@ -28,16 +28,16 @@
             background-image: linear-gradient(to right, var(--color-primary-start), var(--color-primary-end));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            color: var(--color-primary-start); /* Fallback */
-            font-weight: 800; /* Extra bold */
+            color: var(--color-primary-start); 
+            font-weight: 800; 
         }
 
         /* Estilo de las tarjetas (Paneles) */
         .app-card {
             background-color: #FFFFFF;
             border: none; 
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* Sombra suave y moderna */
-            border-radius: 1rem; /* Bordes más redondeados (rounded-xl) */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); 
+            border-radius: 1rem; 
         }
 
         /* Botón Principal (con degradado) */
@@ -57,12 +57,12 @@
         .app-button-secondary {
             background-color: #FFFFFF;
             color: var(--color-primary-mid); 
-            border: 2px solid var(--color-primary-mid); /* Borde con color de acento */
+            border: 2px solid var(--color-primary-mid); 
             transition: all 0.3s;
         }
         .app-button-secondary:hover {
             background-color: #F3F4F6;
-            border-color: var(--color-primary-end); /* Borde cambia a rojo/rosa en hover */
+            border-color: var(--color-primary-end); 
         }
 
         .chart-container {
@@ -80,35 +80,46 @@
             }
         }
         
-        /* === ESTILOS DE IMPRESIÓN PARA RECIBO DE 55MM (CORRECCIÓN FINAL) === */
+        /* === ESTILOS DE IMPRESIÓN ESTÁNDAR (CSS NUCLEAR) === */
         @media print {
-            /* 1. Oculta *TODA* la aplicación y solo deja visible el ticket */
-            body > * { 
+            /* 1. Resetear el cuerpo y el HTML para la impresión */
+            html, body {
+                width: 190px !important; /* Ancho forzado 55mm */
+                min-width: 190px !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: hidden !important;
+            }
+
+            /* 2. Oculta *TODO* excepto el ticket */
+            body > *:not(#ticket-display) { 
                 display: none !important; 
+                visibility: hidden !important; 
             }
             
-            /* 2. FUERZA la visibilidad y dimensiones del ticket */
+            /* 3. FUERZA la visibilidad y dimensiones del ticket */
             #ticket-display {
-                display: block !important; /* Muestra el contenedor oculto */
+                display: block !important; 
                 visibility: visible !important;
-                position: absolute !important; 
+                position: fixed !important; /* Usar fixed para asegurar la posición */
                 top: 0 !important;
                 left: 0 !important;
-                width: 190px !important; /* Ancho fijo para 55mm */
+                width: 190px !important; /* 55mm width */
                 max-width: 100% !important;
+                height: auto !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 box-shadow: none !important;
                 background: none !important;
             }
             
-            /* 3. Estilos específicos para el ticket (texto monospace) */
+            /* 4. Estilos específicos para el ticket (texto monospace) */
             #printable-ticket {
                 font-family: monospace !important;
-                font-size: 9pt !important; /* Fuente más pequeña para recibo */
+                font-size: 9pt !important; 
                 line-height: 1.2 !important;
-                white-space: pre-wrap !important;
-                word-wrap: break-word !important;
+                white-space: pre !important; /* Mantiene el formato PRE (espacios y saltos de línea) */
+                word-wrap: normal !important; 
                 margin: 0 !important;
                 padding: 0 !important;
                 color: #000 !important;
@@ -272,8 +283,9 @@
         const connectBluetoothBtn = document.getElementById('connect-bluetooth-btn');
         let bluetoothDevice = null;
         let bleCharacteristic = null;
-        // UUIDs COMUNES para impresoras térmicas (pueden variar según el modelo)
-        // Se necesitan los UUIDs específicos de Servicio y Característica para escribir datos.
+        
+        // UUIDs COMUNES para impresoras térmicas (pueden variar)
+        // Usando Service 'Printer' (18F0) y Characteristic 'Print Status' (2AF1) para escritura
         const PRINTER_SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb'; 
         const WRITE_CHARACTERISTIC_UUID = '00002af1-0000-1000-8000-00805f9b34fb'; 
 
@@ -398,11 +410,10 @@
         }
         
         // =================================================================
-        // FUNCIONES DE CONEXIÓN BLUETOOTH
+        // FUNCIONES DE CONEXIÓN BLUETOOTH Y ESC/POS
         // =================================================================
         
         async function connectBluetoothPrinter() {
-            // La conexión Bluetooth requiere HTTPS y un navegador compatible (Chrome/Edge en escritorio o Android)
             if (!navigator.bluetooth) {
                 showModal("Error Bluetooth", "Tu navegador no soporta la API Web Bluetooth. Necesitas Chrome, Edge o un dispositivo Android compatible.");
                 return;
@@ -413,10 +424,10 @@
             
             try {
                 // 1. Solicitar el dispositivo (aparecerá un pop-up nativo)
-                // Se filtra por el nombre proporcionado por el usuario y los servicios comunes.
-                // *NOTA: La dirección MAC no puede usarse directamente por seguridad.*
                 bluetoothDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: 'blue tooth Printer' }],
+                    // ACTUALIZACIÓN: Usamos el nombre exacto del ticket: 'BlueTooth Printer'
+                    filters: [{ name: 'BlueTooth Printer' }], 
+                    // Se requieren optionalServices para acceder a servicios no estándar
                     optionalServices: [PRINTER_SERVICE_UUID] 
                 });
 
@@ -429,7 +440,7 @@
                 // 2. Conectar al GATT Server
                 const server = await bluetoothDevice.gatt.connect();
                 
-                // 3. Obtener el servicio de la impresora (si no funciona, prueba con servicio estándar 'generic_access')
+                // 3. Obtener el servicio de la impresora 
                 const service = await server.getPrimaryService(PRINTER_SERVICE_UUID);
                 
                 // 4. Obtener la característica de escritura
@@ -439,12 +450,11 @@
                 bluetoothStatus.className = 'font-bold text-green-600';
                 connectBluetoothBtn.classList.add('hidden'); 
                 
-                // Añadir listener para reconectar si se desconecta
                 bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
 
             } catch (error) {
                 console.error("Fallo al conectar la impresora Bluetooth:", error);
-                showModal("Error de Conexión BLE", `No se pudo conectar: ${error.message}. Asegúrate de que la impresora esté encendida y cerca. **La conexión fue rechazada o falló al encontrar los UUIDs.**`);
+                showModal("Error de Conexión BLE", `No se pudo conectar: ${error.message}. Asegúrate de que la impresora esté encendida y cerca.`);
                 bluetoothStatus.textContent = '⚠️ Desconectado/Error';
                 bluetoothStatus.className = 'font-bold text-red-600';
                 connectBluetoothBtn.classList.remove('hidden'); 
@@ -462,6 +472,56 @@
         }
 
         connectBluetoothBtn.addEventListener('click', connectBluetoothPrinter);
+
+        /**
+         * Convierte el texto del ticket a comandos ESC/POS básicos y lo envía.
+         * Esto asume que la impresora es compatible con ESC/POS.
+         */
+        async function printViaBluetooth(ticketText) {
+            if (!bleCharacteristic) {
+                showModal("Error de Impresión", "La impresora Bluetooth no está conectada o no se encontró la característica de escritura.");
+                return false;
+            }
+
+            try {
+                const textEncoder = new TextEncoder();
+                
+                // Comandos ESC/POS Básicos:
+                const ESC = '\x1B';
+                const GS = '\x1D';
+
+                // 1. Inicializar, centrar, establecer tamaño (opcional)
+                const initialize = ESC + '@';
+                const center = ESC + 'a' + '\x01';
+                // 2. Comandos para texto (ej. fuente pequeña, si se necesita: ESC ! \x01)
+                
+                // 3. Contenido y salto de línea (añadir saltos de línea al final)
+                const feedLines = '\n\n\n'; 
+                
+                // 4. Comando de corte de papel (GS V m n o GS V m)
+                const cut = GS + 'V' + '\x00'; 
+                
+                // 5. Concatenar comandos y contenido
+                const printData = initialize + center + ticketText.trim() + feedLines + cut;
+                
+                // Convertir a bytes
+                const data = textEncoder.encode(printData);
+                
+                // Escribir en la característica (se divide en fragmentos de 500 bytes para evitar errores)
+                const chunkSize = 500;
+                for (let i = 0; i < data.length; i += chunkSize) {
+                    const chunk = data.slice(i, i + chunkSize);
+                    await bleCharacteristic.writeValue(chunk);
+                }
+
+                showModal("Impresión Bluetooth Exitosa", "Ticket enviado directamente a la impresora Bluetooth (ESC/POS).");
+                return true;
+            } catch (error) {
+                console.error("Error al enviar datos por Bluetooth (ESC/POS):", error);
+                showModal("Error Crítico de Impresión BLE", `Fallo al enviar el ticket binario: ${error.message}. Intenta usar la impresión estándar del navegador.`);
+                return false;
+            }
+        }
 
         // =================================================================
         // LÓGICA DE TICKET Y COBRO
@@ -485,7 +545,6 @@
         
         /**
          * Genera el contenido del ticket y dispara la impresión.
-         * Se usa una función async/await para dar un respiro al DOM antes de imprimir.
          */
         async function generarEImprimirTicket(vehiculo, esSalida = false) {
             
@@ -537,16 +596,12 @@ ${esSalida ? '¡GRACIAS POR SU PREFERENCIA!' : 'GUARDE ESTE TICKET PARA SALIR'}
             // 3. Esperar un poco para asegurar que el DOM se actualizó (async delay)
             await new Promise(resolve => setTimeout(resolve, 100));
 
-            // Si hay conexión Bluetooth, intenta notificar al usuario (La impresión real es compleja)
+            // *** DECISIÓN DE IMPRESIÓN: Si hay Bluetooth, se usa ESC/POS, sino, se usa el diálogo estándar. ***
             if (bleCharacteristic) {
-                // **NOTA TÉCNICA:** Para imprimir por Bluetooth REALMENTE, el ticketContent 
-                // debería convertirse a comandos ESC/POS y luego enviarse a la característica.
-                // Como esto requiere los UUIDs y comandos exactos, nos limitaremos a notificar.
-                showModal("Conexión Bluetooth Activa", "El ticket se ha generado. La conexión Bluetooth está lista, pero por ahora se usará la impresión estándar del navegador.");
+                await printViaBluetooth(ticketContent);
+            } else {
+                window.print();
             }
-            
-            // 4. Disparar la impresión estándar (funciona con impresoras instaladas como la Brother o virtuales)
-            window.print();
         }
         
         /**
@@ -574,7 +629,7 @@ ${esSalida ? '¡GRACIAS POR SU PREFERENCIA!' : 'GUARDE ESTE TICKET PARA SALIR'}
                 // 3. Renderizar, guardar y mostrar ticket de salida (con impresión)
                 renderEstacionados();
                 renderHistorial();
-                saveData(); // <--- GUARDAR DATOS TRAS SALIDA
+                saveData(); 
                 generarEImprimirTicket(vehiculo, true); 
                 
                 salidaStatus.textContent = `Salida de ${placas} registrada. Tarifa a pagar: ${CURRENCY_FORMATTER.format(costoTotal)}.`;
@@ -734,7 +789,7 @@ ${esSalida ? '¡GRACIAS POR SU PREFERENCIA!' : 'GUARDE ESTE TICKET PARA SALIR'}
             renderEstacionados();
             generarEImprimirTicket(nuevoVehiculo, false); // Generar ticket de entrada E IMPRIMIR
             entradaForm.reset();
-            saveData(); // <--- GUARDAR DATOS TRAS ENTRADA
+            saveData(); 
         });
 
         // Evento de Registro de Salida
@@ -753,14 +808,12 @@ ${esSalida ? '¡GRACIAS POR SU PREFERENCIA!' : 'GUARDE ESTE TICKET PARA SALIR'}
 
 
         document.addEventListener('DOMContentLoaded', () => {
-            loadData(); // <--- CARGAR DATOS AL INICIO
+            loadData(); 
             renderEstacionados();
             renderHistorial();
             updateClock(); 
             setInterval(updateClock, 1000); 
-            // Inicializar el gráfico al cargar
             updateChart(); 
-            // Eliminar el mensaje de estado de salida al inicio
             salidaStatus.classList.add('hidden');
         });
 
