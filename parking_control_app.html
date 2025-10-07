@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Estacionamiento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Definición de la nueva paleta de colores para el degradado */
+        :root {
+            --color-primary-start: #3B82F6; /* Azul Vívido */
+            --color-primary-mid: #8B5CF6;    /* Morado Brillante */
+            --color-primary-end: #EC4899;  /* Rojo/Rosa Magenta */
+            --color-text-dark: #1F2937;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F8FAFC; /* Fondo muy claro */
+            color: var(--color-text-dark);
+        }
+        
+        /* Estilo para los títulos con degradado (Header H1) */
+        .header-title {
+            background-image: linear-gradient(to right, var(--color-primary-start), var(--color-primary-end));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: var(--color-primary-start); /* Fallback */
+            font-weight: 800; /* Extra bold */
+        }
+
+        /* Estilo de las tarjetas (Paneles) */
+        .app-card {
+            background-color: #FFFFFF;
+            border: none; 
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* Sombra suave y moderna */
+            border-radius: 1rem; /* Bordes más redondeados (rounded-xl) */
+        }
+
+        /* Botón Principal (con degradado) */
+        .app-button {
+            background-image: linear-gradient(to right, var(--color-primary-start), var(--color-primary-mid), var(--color-primary-end));
+            color: #FFFFFF;
+            transition: all 0.3s ease;
+            border: none;
+        }
+        .app-button:hover {
+            opacity: 0.9;
+            box-shadow: 0 4px 10px rgba(59, 130, 246, 0.4);
+            transform: scale(1.02);
+        }
+
+        /* Botón Secundario (Registrar Salida - para el listado) */
+        .app-button-secondary {
+            background-color: #FFFFFF;
+            color: var(--color-primary-mid); 
+            border: 2px solid var(--color-primary-mid); /* Borde con color de acento */
+            transition: all 0.3s;
+        }
+        .app-button-secondary:hover {
+            background-color: #F3F4F6;
+            border-color: var(--color-primary-end); /* Borde cambia a rojo/rosa en hover */
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        
+        /* === ESTILOS DE IMPRESIÓN PARA RECIBO DE 58MM (CORREGIDO) === */
+        @media print {
+            /* 1. Oculta todo el contenido principal de la app */
+            body > *:not(#ticket-display) { 
+                display: none !important; 
+            }
+            /* 2. Muestra solo el contenedor del ticket y asegura que sea visible */
+            #ticket-display {
+                display: block !important;
+                visibility: visible !important;
+                position: absolute !important; 
+                top: 0 !important;
+                left: 0 !important;
+                width: 200px !important; /* Ancho de recibo */
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+                background: none !important;
+            }
+            
+            /* 3. Estilos específicos para el ticket (texto monospace) */
+            #printable-ticket {
+                font-family: monospace !important;
+                font-size: 9pt !important; /* Fuente más pequeña para recibo */
+                line-height: 1.2 !important;
+                white-space: pre-wrap !important;
+                word-wrap: break-word !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                color: #000 !important;
+            }
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-7xl mx-auto" id="app-wrapper">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold header-title">🚗 Sistema de Control de Estacionamiento</h1>
+            <p class="text-lg text-gray-500 mt-2">Gestiona las entradas y salidas de vehículos de forma sencilla.</p>
+            <!-- RELOJ VISIBLE Y CONSTANTE -->
+            <div id="current-time-display" class="text-xl font-mono text-gray-700 mt-4 p-2 bg-white rounded-xl inline-block shadow-md">
+                <!-- La hora y fecha actual se insertan aquí -->
+            </div>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+            
+            <!-- REGISTRAR ENTRADA -->
+            <div class="lg:col-span-1 app-card rounded-xl p-6">
+                <h2 class="text-2xl font-semibold mb-4 border-b pb-2 text-gray-800">Registrar Nueva Entrada</h2>
+                <p class="text-sm text-gray-500 mb-4">Introduce las **Placas** (que será el código del ticket) y los detalles del vehículo.</p>
+                <form id="entrada-form" class="space-y-4">
+                    <div>
+                        <label for="placas" class="block text-sm font-medium text-gray-700">Placas (Código de Ticket)</label>
+                        <input type="text" id="placas" name="placas" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" placeholder="ABC-123">
+                    </div>
+                    <div>
+                        <label for="modelo" class="block text-sm font-medium text-gray-700">Modelo y Marca</label>
+                        <input type="text" id="modelo" name="modelo" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" placeholder="Ej. Nissan Versa">
+                    </div>
+                    <div>
+                        <label for="detalle" class="block text-sm font-medium text-gray-700">Detalle (Opcional)</label>
+                        <input type="text" id="detalle" name="detalle" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" placeholder="Ej. Cajón 5, Llantas bajas, etc.">
+                    </div>
+                    
+                    <button type="submit" class="w-full app-button font-bold py-2 px-4 rounded-xl">
+                        Generar Ticket e Imprimir
+                    </button>
+                </form>
+            </div>
+            
+            <!-- REGISTRAR SALIDA MANUAL -->
+            <div class="lg:col-span-1 app-card rounded-xl p-6">
+                <h2 class="text-2xl font-semibold mb-4 border-b pb-2 text-gray-800">Registrar Salida</h2>
+                 <p class="text-sm text-gray-500 mb-4">Introduce el código del ticket (las placas) para calcular la tarifa y registrar la salida.</p>
+                
+                <form id="salida-form" class="space-y-4">
+                    <div>
+                        <label for="placas_salida" class="block text-sm font-medium text-gray-700">Placas / Código de Ticket</label>
+                        <input type="text" id="placas_salida" name="placas_salida" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2" placeholder="ABC-123">
+                    </div>
+                    
+                    <button type="submit" class="w-full app-button-secondary font-bold py-2 px-4 rounded-xl border-none">
+                        Calcular Tarifa y Registrar Salida
+                    </button>
+                </form>
+
+                <div id="salida-status" class="mt-4 p-3 bg-blue-100 border border-blue-300 text-blue-800 rounded-lg text-sm text-center hidden">
+                    <!-- Mensaje de estado de salida/tarifa -->
+                </div>
+            </div>
+
+            <!-- TICKET DISPLAY (Columna 3 en desktop) - AHORA ES UN PANEL DE ESTADO -->
+            <div class="lg:col-span-1 app-card rounded-xl p-6 flex flex-col">
+                <h2 class="text-2xl font-semibold mb-4 border-b pb-2 text-gray-800">Estado de Operación</h2>
+                 <p class="text-sm text-gray-500 mb-4">Muestra los resultados de las últimas acciones realizadas (entrada/salida).</p>
+                <!-- Contenedor del Ticket (Se usará SOLO para la impresión) -->
+                <div id="ticket-display-container" class="bg-gray-50 rounded-lg p-4 flex flex-col items-center justify-center min-h-[150px]">
+                    <div id="main-status-message" class="text-center">
+                        <p class="text-gray-500 italic">Listo para registrar vehículos.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contenedor flotante para el ticket de impresión (se ocultará en la pantalla, pero se mostrará al imprimir) -->
+            <div id="ticket-display" class="fixed top-0 left-0 w-1 h-1 overflow-hidden opacity-0 z-0">
+                <!-- El contenido del ticket se inyecta aquí justo antes de imprimir -->
+                <pre id="printable-ticket"></pre>
+            </div>
+        </main>
+        
+        <!-- VEHÍCULOS ESTACIONADOS -->
+        <section class="mb-8">
+            <div class="app-card rounded-xl p-6">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-800">Vehículos Estacionados Actualmente <span id="count-estacionados" class="bg-indigo-500 text-white text-sm font-bold px-3 py-1 rounded-full ml-2">0</span></h2>
+                <p class="text-sm text-gray-500 mb-4">Estos vehículos aún están dentro. Usa el botón 'Registrar Salida' en cada tarjeta o el formulario de arriba.</p>
+                <div id="estacionados-list" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <p id="no-estacionados" class="text-gray-500 italic md:col-span-2 xl:col-span-3">No hay vehículos estacionados en este momento.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ANÁLISIS DE ENTRADAS -->
+        <section class="mb-8">
+            <div class="app-card rounded-xl p-6">
+                 <h2 class="text-2xl font-semibold mb-4 text-gray-800">Análisis de Entradas por Hora</h2>
+                 <p class="text-sm text-gray-500 mb-4">Gráfico de entradas por hora para identificar momentos de mayor actividad.</p>
+                <div class="chart-container">
+                    <canvas id="entradas-chart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- HISTORIAL DE SALIDAS -->
+        <section>
+            <div class="app-card rounded-xl p-6">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-800">Historial de Salidas <span id="count-historial" class="bg-pink-500 text-white text-sm font-bold px-3 py-1 rounded-full ml-2">0</span></h2>
+                <p class="text-sm text-gray-500 mb-4">Registro de vehículos que ya han salido, incluyendo tiempo y costo total.</p>
+                <div id="historial-list" class="space-y-3">
+                     <p id="no-historial" class="text-gray-500 italic">Aún no se han registrado salidas.</p>
+                </div>
+            </div>
+        </section>
+        
+        <!-- MODAL DE MENSAJE (Reemplaza a alert()) -->
+        <div id="app-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full">
+                <h3 id="modal-title" class="text-xl font-bold mb-3"></h3>
+                <p id="modal-message" class="text-gray-700 mb-4"></p>
+                <button id="modal-close-btn" class="w-full app-button font-bold py-2 rounded-xl">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Claves para el almacenamiento local
+        const STORAGE_KEY_ESTACIONADOS = 'parking_estacionados';
+        const STORAGE_KEY_HISTORIAL = 'parking_historial';
+        const STORAGE_KEY_COUNTER = 'parking_id_counter';
+
+        // TARIFA: $20.00 MXN por hora o fracción
+        const HOURLY_RATE = 20;
+        const CURRENCY_FORMATTER = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+        const PARKING_NAME = "EL CARMEN";
+
+        const entradaForm = document.getElementById('entrada-form');
+        const salidaForm = document.getElementById('salida-form');
+        const estacionadosList = document.getElementById('estacionados-list');
+        const historialList = document.getElementById('historial-list');
+        
+        const mainStatusMessage = document.getElementById('main-status-message');
+        const salidaStatus = document.getElementById('salida-status');
+        const printableTicket = document.getElementById('printable-ticket');
+        const countEstacionados = document.getElementById('count-estacionados');
+        const countHistorial = document.getElementById('count-historial');
+
+
+        let vehiculosEstacionados = [];
+        let historialSalidas = [];
+        let idCounter = 0;
+        let chartInstance = null;
+
+
+        // =================================================================
+        // FUNCIONES DE ALMACENAMIENTO (PERSISTENCIA)
+        // =================================================================
+
+        /**
+         * Guarda los datos actuales en localStorage.
+         */
+        function saveData() {
+            try {
+                // Guardar Vehículos Estacionados (convirtiendo Date a string)
+                const estacionadosToSave = vehiculosEstacionados.map(v => ({
+                    ...v,
+                    horaEntrada: v.horaEntrada.toISOString()
+                }));
+                localStorage.setItem(STORAGE_KEY_ESTACIONADOS, JSON.stringify(estacionadosToSave));
+
+                // Guardar Historial (convirtiendo Date a string)
+                const historialToSave = historialSalidas.map(v => ({
+                    ...v,
+                    horaEntrada: v.horaEntrada.toISOString(),
+                    horaSalida: v.horaSalida ? v.horaSalida.toISOString() : null
+                }));
+                localStorage.setItem(STORAGE_KEY_HISTORIAL, JSON.stringify(historialToSave));
+                
+                // Guardar Contador
+                localStorage.setItem(STORAGE_KEY_COUNTER, idCounter);
+
+            } catch (error) {
+                console.error("Error al guardar datos en localStorage:", error);
+                showModal("Error de Guardado", "No se pudieron guardar los datos. El historial puede perderse al cerrar.");
+            }
+        }
+
+        /**
+         * Carga los datos guardados de localStorage.
+         */
+        function loadData() {
+            try {
+                // Cargar Contador
+                const savedCounter = localStorage.getItem(STORAGE_KEY_COUNTER);
+                idCounter = savedCounter ? parseInt(savedCounter, 10) : 0;
+                
+                // Cargar Vehículos Estacionados
+                const savedEstacionados = localStorage.getItem(STORAGE_KEY_ESTACIONADOS);
+                if (savedEstacionados) {
+                    const parsedEstacionados = JSON.parse(savedEstacionados);
+                    vehiculosEstacionados = parsedEstacionados.map(v => ({
+                        ...v,
+                        horaEntrada: new Date(v.horaEntrada) // Convertir string a Date
+                    }));
+                }
+
+                // Cargar Historial
+                const savedHistorial = localStorage.getItem(STORAGE_KEY_HISTORIAL);
+                if (savedHistorial) {
+                    const parsedHistorial = JSON.parse(savedHistorial);
+                    historialSalidas = parsedHistorial.map(v => ({
+                        ...v,
+                        horaEntrada: new Date(v.horaEntrada),
+                        // Convertir string a Date si existe
+                        horaSalida: v.horaSalida ? new Date(v.horaSalida) : null
+                    }));
+                }
+            } catch (error) {
+                console.error("Error al cargar datos de localStorage:", error);
+                showModal("Error de Carga", "No se pudieron recuperar los datos guardados. Se iniciará con el historial vacío.");
+                // Si falla la carga, asegurar que las listas están vacías
+                vehiculosEstacionados = [];
+                historialSalidas = [];
+                idCounter = 0;
+            }
+        }
+
+
+        // =================================================================
+        // FUNCIONES DE UTILIDAD Y FORMATO
+        // =================================================================
+
+        function showModal(title, message) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-message').textContent = message;
+            document.getElementById('app-modal').classList.remove('hidden');
+        }
+
+        document.getElementById('modal-close-btn').addEventListener('click', () => {
+            document.getElementById('app-modal').classList.add('hidden');
+        });
+
+        function formatDateTime(date) {
+            if (!date) return 'N/A';
+            return new Intl.DateTimeFormat('es-MX', {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+            }).format(date);
+        }
+
+        function formatDuration(ms) {
+            if (ms < 0) ms = 0;
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            return `${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
+        }
+
+        function updateClock() {
+            const now = new Date();
+            const timeString = new Intl.DateTimeFormat('es-MX', {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+            }).format(now);
+            document.getElementById('current-time-display').textContent = `🕒 ${timeString}`;
+        }
+        
+        // =================================================================
+        // LÓGICA DE TICKET Y COBRO
+        // =================================================================
+        
+        /**
+         * Calcula el costo total y duración de un vehículo.
+         */
+        function calcularCosto(vehiculo) {
+            const horaSalida = new Date();
+            const duracionMs = horaSalida - vehiculo.horaEntrada;
+            const duracionStr = formatDuration(duracionMs);
+
+            // CÁLCULO DE COSTO: $20 por hora o fracción
+            const durationInHours = duracionMs / (1000 * 60 * 60);
+            const roundedHours = Math.ceil(durationInHours); 
+            const costoTotal = roundedHours * HOURLY_RATE;
+
+            return { duracion: duracionStr, costoTotal, horaSalida };
+        }
+        
+        /**
+         * Genera el contenido del ticket y dispara la impresión.
+         * Se asegura de que el contenido del ticket se inyecte en un div oculto 
+         * para la impresión y se lance la ventana de impresión.
+         */
+        function generarEImprimirTicket(vehiculo, esSalida = false) {
+            
+            let costoFormateado = "PAGO AL SALIR";
+            let tiempoTotal = "TIEMPO: N/A";
+            let horaSalida = "";
+            let ticketTitulo = "TICKET DE ENTRADA";
+            let statusMessage = "";
+            
+            if (esSalida) {
+                costoFormateado = CURRENCY_FORMATTER.format(vehiculo.costoTotal);
+                tiempoTotal = `TIEMPO TOTAL: ${vehiculo.duracion}`;
+                horaSalida = `SALIDA:       ${formatDateTime(vehiculo.horaSalida)}`;
+                ticketTitulo = "TICKET DE SALIDA";
+                statusMessage = `✅ Salida de ${vehiculo.placas} registrada. Costo: ${costoFormateado}`;
+            } else {
+                statusMessage = `🎫 Entrada de ${vehiculo.placas} registrada. Ticket enviado a la impresora.`;
+            }
+
+            // CONTENIDO DEL RECIBO (Optimizada para 58mm)
+            const ticketContent = `
+*****************************
+    ${ticketTitulo}
+    ESTACIONAMIENTO ${PARKING_NAME}
+*****************************
+VEHÍCULO:
+Placas/Código: ${vehiculo.placas}
+Modelo:        ${vehiculo.modelo}
+-----------------------------
+FECHA Y HORA DE ENTRADA:
+${formatDateTime(vehiculo.horaEntrada)}
+-----------------------------
+${tiempoTotal}
+${horaSalida}
+-----------------------------
+COSTO TOTAL:  ${costoFormateado}
+TARIFA: ${CURRENCY_FORMATTER.format(HOURLY_RATE)}/h o frac.
+*****************************
+${esSalida ? '¡GRACIAS POR SU PREFERENCIA!' : 'GUARDE ESTE TICKET PARA SALIR'}
+`;
+            
+            // 1. Mostrar el mensaje de estado en el panel central
+            mainStatusMessage.innerHTML = `<p class="text-xl font-bold text-gray-800">${ticketTitulo} generado.</p><p class="text-lg text-green-600">${vehiculo.placas}</p><p class="text-sm text-gray-500 mt-2">${statusMessage}</p>`;
+
+
+            // 2. Inyectar el contenido del ticket en el div oculto para la impresión
+            printableTicket.textContent = ticketContent;
+            
+            // 3. Disparar la impresión
+            setTimeout(() => {
+                window.print();
+            }, 100); 
+        }
+        
+        /**
+         * Procesa la salida del vehículo.
+         */
+        function registrarSalida(placas) {
+            const index = vehiculosEstacionados.findIndex(v => v.placas === placas);
+            
+            salidaStatus.classList.remove('hidden');
+            
+            if (index > -1) {
+                const vehiculo = vehiculosEstacionados[index];
+                
+                // 1. Calcular costo y tiempo
+                const { duracion, costoTotal, horaSalida } = calcularCosto(vehiculo);
+                
+                // 2. Actualizar vehículo y moverlo a historial
+                vehiculo.horaSalida = horaSalida;
+                vehiculo.duracion = duracion;
+                vehiculo.costoTotal = costoTotal;
+
+                historialSalidas.push(vehiculo);
+                vehiculosEstacionados.splice(index, 1);
+
+                // 3. Renderizar, guardar y mostrar ticket de salida (con impresión)
+                renderEstacionados();
+                renderHistorial();
+                saveData(); // <--- GUARDAR DATOS TRAS SALIDA
+                generarEImprimirTicket(vehiculo, true); 
+                
+                salidaStatus.textContent = `Salida de ${placas} registrada. Tarifa a pagar: ${CURRENCY_FORMATTER.format(costoTotal)}.`;
+                salidaStatus.className = 'mt-4 p-3 bg-green-100 border border-green-300 text-green-800 rounded-lg text-sm text-center';
+
+            } else {
+                showModal("Error", `No se encontró un vehículo estacionado con las placas/código ${placas}.`);
+                salidaStatus.textContent = `Error: Vehículo con placas/código ${placas} no encontrado.`;
+                salidaStatus.className = 'mt-4 p-3 bg-red-100 border border-red-300 text-red-800 rounded-lg text-sm text-center';
+            }
+        }
+
+        // =================================================================
+        // MANEJO DE EVENTOS Y RENDERIZADO
+        // =================================================================
+
+        function renderEstacionados() {
+            estacionadosList.innerHTML = '';
+            countEstacionados.textContent = vehiculosEstacionados.length;
+
+            if (vehiculosEstacionados.length === 0) {
+                estacionadosList.innerHTML = `<p id="no-estacionados" class="text-gray-500 italic md:col-span-2 xl:col-span-3">No hay vehículos estacionados en este momento.</p>`;
+            } else {
+                vehiculosEstacionados.forEach(v => {
+                    const card = document.createElement('div');
+                    card.className = 'p-4 rounded-xl shadow-md border bg-white flex flex-col justify-between'; 
+                    
+                    // Calcular costo actual (solo para mostrar)
+                    const { duracion, costoTotal } = calcularCosto(v);
+
+                    card.innerHTML = `
+                        <div>
+                            <p class="font-bold text-lg text-gray-800">${v.placas}</p>
+                            <p class="text-gray-600">${v.modelo}</p>
+                            <p class="text-sm text-gray-500">Detalle: <span class="font-medium text-gray-700">${v.detalle}</span></p>
+                            <p class="text-sm text-gray-500 mt-2">Entrada: ${formatDateTime(v.horaEntrada)}</p>
+                            <p class="text-md font-semibold text-purple-600 mt-1">Tiempo: ${duracion}</p>
+                            <p class="text-xl font-bold text-red-600">Costo Est.: ${CURRENCY_FORMATTER.format(costoTotal)}</p>
+                        </div>
+                        <button onclick="registrarSalidaConBoton('${v.placas}')" class="mt-4 w-full app-button-secondary font-bold py-2 px-4 rounded-xl text-sm">
+                            Registrar Salida
+                        </button>
+                    `;
+                    estacionadosList.appendChild(card);
+                });
+            }
+            updateChart();
+        }
+
+        // Función auxiliar para registrar salida desde el botón del listado
+        window.registrarSalidaConBoton = (placas) => {
+             registrarSalida(placas);
+             salidaForm.reset();
+        }
+
+        function renderHistorial() {
+            historialList.innerHTML = '';
+            countHistorial.textContent = historialSalidas.length;
+
+            if (historialSalidas.length === 0) {
+                 historialList.innerHTML = `<p id="no-historial" class="text-gray-500 italic">Aún no se han registrado salidas.</p>`;
+            } else {
+                const reversedHistory = [...historialSalidas].reverse();
+                reversedHistory.forEach(v => {
+                    const costoFormateado = CURRENCY_FORMATTER.format(v.costoTotal);
+                    const item = document.createElement('div');
+                    item.className = 'p-3 rounded-xl border bg-gray-100 grid grid-cols-2 md:grid-cols-5 gap-4 items-center'; 
+                    item.innerHTML = `
+                        <div>
+                            <p class="font-semibold text-gray-800">${v.placas}</p>
+                            <p class="text-sm text-gray-600">${v.modelo}</p>
+                            <p class="text-xs text-gray-500">Detalle: ${v.detalle}</p>
+                        </div>
+                        <p class="text-sm text-gray-500"><span class="font-medium text-gray-600">Entrada:</span> ${formatDateTime(v.horaEntrada)}</p>
+                        <p class="text-sm text-gray-500"><span class="font-medium text-gray-600">Salida:</span> ${formatDateTime(v.horaSalida)}</p>
+                        <p class="font-semibold text-gray-600">${v.duracion}</p>
+                        <p class="font-bold text-lg text-red-600 md:text-right">${costoFormateado}</p>
+                    `;
+                    historialList.appendChild(item);
+                });
+            }
+        }
+
+        function updateChart() {
+            const entriesByHour = new Array(24).fill(0);
+            const allVehicles = [...vehiculosEstacionados, ...historialSalidas];
+            allVehicles.forEach(v => {
+                // Aseguramos que horaEntrada sea un objeto Date
+                const entryDate = v.horaEntrada instanceof Date ? v.horaEntrada : new Date(v.horaEntrada);
+                const hour = entryDate.getHours();
+                entriesByHour[hour]++;
+            });
+
+            const chartData = {
+                labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
+                datasets: [{
+                    label: 'Número de Entradas',
+                    data: entriesByHour,
+                    backgroundColor: 'rgba(139, 92, 246, 0.6)', 
+                    borderColor: 'rgba(139, 92, 246, 1)',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }]
+            };
+
+            if (chartInstance) {
+                chartInstance.data = chartData;
+                chartInstance.update();
+            } else {
+                const ctx = document.getElementById('entradas-chart').getContext('2d');
+                chartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: chartData,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                        },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+            }
+        }
+
+        // Evento de Registro de Entrada
+        entradaForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const placas = document.getElementById('placas').value.toUpperCase().trim();
+            const modelo = document.getElementById('modelo').value;
+            const detalle = document.getElementById('detalle').value.trim(); 
+
+            if (!placas) {
+                showModal("Error", "Las Placas (Código de Ticket) no pueden estar vacías.");
+                return;
+            }
+            
+            // Verificar si el vehículo ya está estacionado
+            if (vehiculosEstacionados.some(v => v.placas === placas)) {
+                showModal("Error de Registro", `El vehículo con placas/código ${placas} ya se encuentra estacionado.`);
+                return;
+            }
+            
+            idCounter++;
+            const nuevoVehiculo = {
+                id: idCounter,
+                placas, // Las placas son el código de ticket
+                modelo,
+                detalle: detalle || 'N/A',
+                horaEntrada: new Date(),
+                horaSalida: null,
+                duracion: null,
+                costoTotal: 0 
+            };
+
+            vehiculosEstacionados.push(nuevoVehiculo);
+            renderEstacionados();
+            generarEImprimirTicket(nuevoVehiculo, false); // Generar ticket de entrada E IMPRIMIR
+            entradaForm.reset();
+            saveData(); // <--- GUARDAR DATOS TRAS ENTRADA
+        });
+
+        // Evento de Registro de Salida
+        salidaForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const placasSalida = document.getElementById('placas_salida').value.toUpperCase().trim();
+            
+            if (!placasSalida) {
+                showModal("Error", "Debes ingresar las Placas / Código de Ticket para registrar la salida.");
+                return;
+            }
+
+            registrarSalida(placasSalida);
+            salidaForm.reset();
+        });
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData(); // <--- CARGAR DATOS AL INICIO
+            renderEstacionados();
+            renderHistorial();
+            updateClock(); 
+            setInterval(updateClock, 1000); 
+            // Inicializar el gráfico al cargar
+            updateChart(); 
+            // Eliminar el mensaje de estado de salida al inicio
+            salidaStatus.classList.add('hidden');
+        });
+
+        // Asegurar que el gráfico y los tiempos se actualicen cada minuto
+        setInterval(renderEstacionados, 60000);
+    </script>
+</body>
+</html>
