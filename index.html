@@ -138,6 +138,27 @@
             </div>
         </header>
 
+        <!-- NUEVA SECCIÓN: PANEL DE ESTADÍSTICAS -->
+        <section class="mb-8">
+            <div class="app-card rounded-xl p-6">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-800">Estadísticas del Día</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-blue-50 p-4 rounded-lg text-center">
+                        <p class="text-sm text-blue-600">Total Cobrado Hoy</p>
+                        <p id="total-cobrado" class="text-2xl font-bold text-blue-800">$0.00</p>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-lg text-center">
+                        <p class="text-sm text-green-600">Total Autos Ingresados</p>
+                        <p id="total-autos" class="text-2xl font-bold text-green-800">0</p>
+                    </div>
+                    <div class="bg-purple-50 p-4 rounded-lg text-center">
+                        <p class="text-sm text-purple-600">Autos Estacionados</p>
+                        <p id="autos-estacionados" class="text-2xl font-bold text-purple-800">0</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <main class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
             
             <!-- REGISTRAR ENTRADA -->
@@ -410,6 +431,35 @@
         }
         
         // =================================================================
+        // NUEVA FUNCIONALIDAD: CALCULAR TOTALES
+        // =================================================================
+        
+        function updateTotals() {
+            // Calcular total cobrado hoy
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            const totalCobradoHoy = historialSalidas
+                .filter(v => {
+                    const salidaDate = new Date(v.horaSalida);
+                    return salidaDate >= today;
+                })
+                .reduce((total, v) => total + v.costoTotal, 0);
+            
+            // Calcular total de autos ingresados hoy
+            const totalAutosHoy = historialSalidas
+                .filter(v => {
+                    const entradaDate = new Date(v.horaEntrada);
+                    return entradaDate >= today;
+                }).length + vehiculosEstacionados.length;
+            
+            // Actualizar la interfaz
+            document.getElementById('total-cobrado').textContent = CURRENCY_FORMATTER.format(totalCobradoHoy);
+            document.getElementById('total-autos').textContent = totalAutosHoy;
+            document.getElementById('autos-estacionados').textContent = vehiculosEstacionados.length;
+        }
+        
+        // =================================================================
         // FUNCIONES DE CONEXIÓN BLUETOOTH Y ESC/POS
         // =================================================================
         
@@ -654,6 +704,7 @@ ${esSalida ? '¡GRACIAS POR SU PREFERENCIA!' : 'GUARDE ESTE TICKET PARA SALIR'}
                 renderEstacionados();
                 renderHistorial();
                 saveData(); 
+                updateTotals(); // Actualizar estadísticas
                 generarEImprimirTicket(vehiculo, true); 
                 
                 salidaStatus.textContent = `Salida de ${placas} registrada. Tarifa a pagar: ${CURRENCY_FORMATTER.format(costoTotal)}.`;
@@ -811,6 +862,7 @@ ${esSalida ? '¡GRACIAS POR SU PREFERENCIA!' : 'GUARDE ESTE TICKET PARA SALIR'}
 
             vehiculosEstacionados.push(nuevoVehiculo);
             renderEstacionados();
+            updateTotals(); // Actualizar estadísticas
             generarEImprimirTicket(nuevoVehiculo, false); // Generar ticket de entrada E IMPRIMIR
             entradaForm.reset();
             saveData(); 
@@ -835,6 +887,7 @@ ${esSalida ? '¡GRACIAS POR SU PREFERENCIA!' : 'GUARDE ESTE TICKET PARA SALIR'}
             loadData(); 
             renderEstacionados();
             renderHistorial();
+            updateTotals(); // Inicializar estadísticas
             updateClock(); 
             setInterval(updateClock, 1000); 
             updateChart(); 
